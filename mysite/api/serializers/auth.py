@@ -10,7 +10,8 @@ class UserSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'phone', 'first_name', 'last_name', 'email', 
             'role', 'sub_role', 'profile_photo', 'country', 
-            'city', 'address', 'status', 'kyc_status', 'created_at'
+            'city', 'address', 'latitude', 'longitude', 
+            'status', 'kyc_status', 'created_at'
         )
         read_only_fields = ('id', 'created_at', 'status', 'kyc_status')
 
@@ -33,10 +34,13 @@ class RegisterSerializer(serializers.ModelSerializer):
         return user
 
 class KYCRecordSerializer(serializers.ModelSerializer):
+    user_id = serializers.PrimaryKeyRelatedField(source='user', read_only=True)
+    validated_by_id = serializers.PrimaryKeyRelatedField(source='validated_by', read_only=True)
+
     class Meta:
         model = KYCRecord
         fields = (
-            'id', 'user', 'cni_front_image', 'cni_back_image', 
-            'status', 'rejection_reason', 'submitted_at', 'validated_at'
+            'id', 'user_id', 'cni_front_image', 'cni_back_image', 
+            'status', 'rejection_reason', 'submitted_at', 'validated_at', 'validated_by_id'
         )
-        read_only_fields = ('id', 'user', 'status', 'submitted_at', 'validated_at')
+        read_only_fields = ('id', 'user_id', 'status', 'submitted_at', 'validated_at', 'validated_by_id')

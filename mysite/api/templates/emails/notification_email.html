@@ -1,0 +1,15 @@
+{% extends "emails/base_email.html" %}
+
+{% block content %}
+    <h2>Bonjour {{ name }},</h2>
+    <p>{{ message }}</p>
+    
+    {% if action_url %}
+    <div style="text-align: center;">
+        <a href="{{ action_url }}" class="button">{{ action_text|default:"Consulter" }}</a>
+    </div>
+    {% endif %}
+    
+    <p>Merci de faire confiance à <strong>Tracao</strong> pour la gestion de votre traçabilité.</p>
+    <p>L'équipe Tracao.</p>
+{% endblock %}

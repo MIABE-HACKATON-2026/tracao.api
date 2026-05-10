@@ -1,5 +1,5 @@
 from .auth import User, KYCRecord, Session
-from .cooperatives import Cooperative, CoopMember, CoopAgent
+from .stores import Store, StoreMember, StoreAgent
 from .parcels import Parcel, ParcelValidation
 from .batches import Batch, BatchValidation, Harvest, Transaction
 from .supply_chain import TransporterRegistry, Transport, Transformation, TransformationInput, TransformationOutput, OperatorAssignment

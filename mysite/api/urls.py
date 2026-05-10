@@ -5,7 +5,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, Spec
 
 from .views.auth import RegisterView, UserProfileView, KYCRecordViewSet
 from .views.production import ParcelViewSet, BatchViewSet, HarvestViewSet
-from .views.cooperatives import CooperativeViewSet, CoopMemberViewSet, CoopAgentViewSet
+from .views.stores import StoreViewSet, StoreMemberViewSet, StoreAgentViewSet
 from .views.system import (
     SyncQueueViewSet, NotificationViewSet, TraceabilityViewSet, 
     FraudAlertViewSet, BlockchainRecordViewSet, ReportViewSet
@@ -18,9 +18,9 @@ router.register(r'auth/kyc', KYCRecordViewSet, basename='kyc')
 router.register(r'parcels', ParcelViewSet, basename='parcel')
 router.register(r'batches', BatchViewSet, basename='batch')
 router.register(r'harvests', HarvestViewSet, basename='harvest')
-router.register(r'cooperatives', CooperativeViewSet, basename='cooperative')
-router.register(r'coop-members', CoopMemberViewSet, basename='coop-member')
-router.register(r'coop-agents', CoopAgentViewSet, basename='coop-agent')
+router.register(r'stores', StoreViewSet, basename='store')
+router.register(r'store-members', StoreMemberViewSet, basename='store-member')
+router.register(r'store-agents', StoreAgentViewSet, basename='store-agent')
 router.register(r'sync-queue', SyncQueueViewSet, basename='sync-queue')
 router.register(r'notifications', NotificationViewSet, basename='notification')
 router.register(r'transactions', TransactionViewSet, basename='transaction')

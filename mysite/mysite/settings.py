@@ -160,3 +160,13 @@ SPECTACULAR_SETTINGS = {
 
 # CORS settings
 CORS_ALLOW_ALL_ORIGINS = True # A restreindre en production
+
+# Email Configuration
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = env.str("MAIL_HOST", default='smtp.gmail.com')
+EMAIL_PORT = env.int("MAIL_PORT", default=465)
+EMAIL_USE_SSL = env.str("MAIL_ENCRYPTION", default='ssl') == 'ssl'
+EMAIL_USE_TLS = env.str("MAIL_ENCRYPTION", default='ssl') == 'tls'
+EMAIL_HOST_USER = env.str("MAIL_USERNAME", default='')
+EMAIL_HOST_PASSWORD = env.str("MAIL_PASSWORD", default='')
+DEFAULT_FROM_EMAIL = env.str("MAIL_FROM_ADDRESS", default=EMAIL_HOST_USER)

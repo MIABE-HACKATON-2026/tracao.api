@@ -22,7 +22,7 @@ class User(AbstractUser):
     ROLE_CHOICES = [
         ('farmer', 'Farmer'),
         ('buyer', 'Buyer'),
-        ('coop', 'Cooperative'),
+        ('store', 'Store'),
         ('admin', 'Admin'),
     ]
     SUB_ROLE_CHOICES = [

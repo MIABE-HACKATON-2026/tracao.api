@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {
+            font-family: 'Outfit', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #fcf8f1;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 600px;
+            margin: 30px auto;
+            background-color: #ffffff;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid rgba(67, 40, 24, 0.1);
+        }
+        .content {
+            padding: 40px 30px;
+            line-height: 1.8;
+            color: #432818;
+        }
+        .footer {
+            background-color: rgba(67, 40, 24, 0.05);
+            padding: 25px;
+            text-align: center;
+            font-size: 13px;
+            color: #8b5e3c;
+            border-top: 1px solid rgba(67, 40, 24, 0.1);
+        }
+        .button {
+            display: inline-block;
+            padding: 14px 30px;
+            background-color: rgb(153, 88, 42);
+            color: #ffffff !important;
+            text-decoration: none;
+            border-radius: 8px;
+            margin-top: 25px;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <table width="100%" border="0" cellspacing="0" cellpadding="0">
+            <tr>
+                <td align="center" 
+                    background="https://ik.imagekit.io/e8y97pgqs/tracao/email-templates/pattern.png" 
+                    style="background-color: rgb(67, 40, 24); background-image: url('https://ik.imagekit.io/e8y97pgqs/tracao/email-templates/pattern.png'); background-size: cover; background-position: center; padding: 60px 30px;">
+                    <h1 style="margin: 0; font-size: 32px; font-weight: 700; letter-spacing: 5px; color: #ffe6a7; text-transform: uppercase; font-family: 'Outfit', sans-serif; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">
+                        TRACAO
+                    </h1>
+                </td>
+            </tr>
+        </table>
+
+        <div class="content">
+            {% block content %}
+            {% endblock %}
+        </div>
+        
+        <div class="footer">
+            <p>&copy; 2026 <strong>Tracao</strong> - L'excellence de la traçabilité</p>
+        </div>
+    </div>
+</body>
+</html>
