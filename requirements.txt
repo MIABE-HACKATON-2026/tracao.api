@@ -10,3 +10,5 @@ dj-database-url
 Pillow
 shapely
 pyproj
+gunicorn
+whitenoise
