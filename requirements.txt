@@ -1,0 +1,12 @@
+django>=5.0
+djangorestframework
+environs[django]
+djangorestframework-simplejwt
+psycopg2-binary
+django-filter
+drf-spectacular
+django-cors-headers
+dj-database-url
+Pillow
+shapely
+pyproj
