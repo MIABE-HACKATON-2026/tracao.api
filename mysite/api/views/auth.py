@@ -141,10 +141,95 @@ class VerifyMagicLinkView(generics.GenericAPIView):
         )
 
 
+class VerifyOTPView(generics.GenericAPIView):
+    permission_classes = (permissions.AllowAny,)
+
+    def post(self, request):
+        email = request.data.get("email")
+        code = request.data.get("code")
+
+        if not email or not code:
+            return Response(
+                {"error": "Email and code are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        print(f"DEBUG: Tentative de vérification pour email={email} et code={code}")
+
+        # Chercher le dernier OTP non utilisé pour cet email
+        otp = (
+            OTPRecord.objects.filter(email=email, code=code, is_used=False)
+            .order_by("-created_at")
+            .first()
+        )
+
+        if not otp:
+            print(f"DEBUG: Aucun OTP trouvé en base pour {email} avec ce code.")
+            return Response(
+                {"error": "Code invalide ou expiré"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not otp.is_valid():
+            from django.utils import timezone
+            print(f"DEBUG: OTP trouvé mais invalide. Expire à: {otp.expires_at}, Heure actuelle: {timezone.now()}")
+            return Response(
+                {"error": "Code invalide ou expiré"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Marquer comme utilisé
+        otp.is_used = True
+        otp.save()
+
+        try:
+            user = User.objects.get(email=email)
+            # Générer les tokens JWT pour connecter l'utilisateur immédiatement
+            refresh = RefreshToken.for_user(user)
+            return Response(
+                {
+                    "message": "Compte vérifié avec succès",
+                    "refresh": str(refresh),
+                    "access": str(refresh.access_token),
+                    "user": UserSerializer(user).data,
+                },
+                status=status.HTTP_200_OK,
+            )
+        except User.DoesNotExist:
+            return Response(
+                {"message": "Code vérifié, mais utilisateur introuvable"},
+                status=status.HTTP_200_OK,
+            )
+
+
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     permission_classes = (permissions.AllowAny,)
     serializer_class = RegisterSerializer
+
+    def perform_create(self, serializer):
+        user = serializer.save()
+        
+        # Générer un OTP à 6 chiffres
+        otp_code = str(random.randint(100000, 999999))
+        expires_at = timezone.now() + timedelta(minutes=10)
+        
+        # Enregistrer l'OTP en base
+        OTPRecord.objects.create(email=user.email, code=otp_code, expires_at=expires_at)
+
+        # Envoyer l'email via le service dédié
+        try:
+            EmailService.send_html_email(
+                subject="Votre code de vérification - Tracao",
+                template_name="emails/notification_email.html",
+                context={
+                    "name": f"{user.first_name} {user.last_name}",
+                    "message": f"Merci de vous être inscrit sur Tracao. Votre code de vérification est : {otp_code}. Ce code expirera dans 10 minutes.",
+                },
+                recipient_list=[user.email],
+            )
+            print(f"DEBUG: Email envoyé avec succès à {user.email} avec le code {otp_code}")
+        except Exception as e:
+            print(f"ERROR: Échec de l'envoi de l'email à {user.email}: {str(e)}")
+            # On ne bloque pas l'inscription si l'email échoue, mais on le log
 
 
 class UserProfileView(generics.RetrieveUpdateAPIView):

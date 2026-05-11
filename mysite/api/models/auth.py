@@ -55,6 +55,8 @@ class User(AbstractUser):
     )
 
     profile_photo = models.ImageField(upload_to="profiles/", null=True, blank=True)
+    import_license = models.FileField(upload_to="licenses/", null=True, blank=True)
+    export_license = models.FileField(upload_to="licenses/", null=True, blank=True)
     country = models.CharField(max_length=100, null=True, blank=True)
     city = models.CharField(max_length=100, null=True, blank=True)
     address = models.TextField(null=True, blank=True)

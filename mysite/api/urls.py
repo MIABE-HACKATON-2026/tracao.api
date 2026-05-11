@@ -12,6 +12,7 @@ from .views.auth import (
     UserProfileView,
     KYCRecordViewSet,
     RequestOTPView,
+    VerifyOTPView,
     RequestMagicLinkView,
     VerifyMagicLinkView,
 )
@@ -53,6 +54,7 @@ urlpatterns = [
     path("auth/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("auth/profile/", UserProfileView.as_view(), name="user_profile"),
     path("auth/send-otp/", RequestOTPView.as_view(), name="auth_send_otp"),
+    path("auth/verify-otp/", VerifyOTPView.as_view(), name="auth_verify_otp"),
     path(
         "auth/request-magic-link/",
         RequestMagicLinkView.as_view(),

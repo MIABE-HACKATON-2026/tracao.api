@@ -17,6 +17,8 @@ class UserSerializer(serializers.ModelSerializer):
             "role",
             "sub_role",
             "profile_photo",
+            "import_license",
+            "export_license",
             "country",
             "city",
             "address",
