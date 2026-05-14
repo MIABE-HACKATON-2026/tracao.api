@@ -67,8 +67,8 @@ class FraudAlertViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         if self.request.user.role == 'admin':
-            return FraudAlert.objects.all()
-        return FraudAlert.objects.filter(user=self.request.user)
+            return FraudAlert.objects.select_related('user', 'resolved_by').order_by('-created_at')
+        return FraudAlert.objects.filter(user=self.request.user).select_related('user', 'resolved_by').order_by('-created_at')
 
     @action(detail=True, methods=['post'], url_path='resolve')
     def resolve_alert(self, request, pk=None):
@@ -86,7 +86,7 @@ class BlockchainRecordViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = (permissions.IsAuthenticated,)
 
     def get_queryset(self):
-        return BlockchainRecord.objects.all()
+        return BlockchainRecord.objects.all().order_by('-created_at')
 
 class ReportViewSet(viewsets.ViewSet):
     permission_classes = (permissions.IsAuthenticated,)
@@ -94,14 +94,31 @@ class ReportViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'], url_path='eudr-compliance/(?P<batch_id>[^/.]+)')
     def eudr_report(self, request, batch_id=None):
         try:
-            batch = Batch.objects.get(id=batch_id)
-            # Logic to generate EUDR report
+            batch = Batch.objects.select_related('parcel').get(id=batch_id)
+            
+            transports = batch.transports.count()
+            transformations = batch.used_in_transformations.count()
+            has_validated_parcel = batch.parcel.status == 'approved'
+            
+            traceability_score = 0
+            if has_validated_parcel:
+                traceability_score += 25
+            if transports > 0:
+                traceability_score += 25
+            if transformations > 0:
+                traceability_score += 25
+            if batch.status in ['locked', 'closed']:
+                traceability_score += 25
+            
             report = {
                 "batch_id": batch.unique_code,
-                "origin": batch.parcel.name,
-                "gps_polygon": batch.parcel.gps_coordinates,
-                "is_forest_free": True, # Placeholder logic
-                "traceability_score": 100
+                "origin": batch.parcel.name if batch.parcel else None,
+                "gps_polygon": batch.parcel.gps_coordinates if batch.parcel else None,
+                "is_forest_free": has_validated_parcel,
+                "traceability_score": traceability_score,
+                "total_transports": transports,
+                "total_transformations": transformations,
+                "compliant": traceability_score >= 75
             }
             return Response(report)
         except Batch.DoesNotExist:

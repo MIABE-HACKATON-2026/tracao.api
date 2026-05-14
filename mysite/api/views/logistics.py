@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from django.db import transaction
 
 from ..models.supply_chain import Transport, Transformation, TransformationInput, TransformationOutput
+from ..models.batches import Batch
 from ..serializers.logistics import TransportSerializer, TransformationSerializer
 
 class TransportViewSet(viewsets.ModelViewSet):
@@ -11,7 +12,7 @@ class TransportViewSet(viewsets.ModelViewSet):
     permission_classes = (permissions.IsAuthenticated,)
 
     def get_queryset(self):
-        return Transport.objects.all()
+        return Transport.objects.select_related('batch', 'transporter_registry', 'assigned_by').order_by('-created_at')
 
     def perform_create(self, serializer):
         serializer.save(assigned_by=self.request.user)
@@ -39,7 +40,12 @@ class TransformationViewSet(viewsets.ModelViewSet):
     permission_classes = (permissions.IsAuthenticated,)
 
     def get_queryset(self):
-        return Transformation.objects.all()
+        return (
+            Transformation.objects
+            .select_related('created_by', 'transformer')
+            .prefetch_related('inputs__batch', 'outputs__batch')
+            .order_by('-created_at')
+        )
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
@@ -48,14 +54,32 @@ class TransformationViewSet(viewsets.ModelViewSet):
     def add_input(self, request, pk=None):
         transfo = self.get_object()
         batch_id = request.data.get('batch_id')
-        TransformationInput.objects.create(transformation=transfo, batch_id=batch_id)
+        
+        if not batch_id:
+            return Response({"error": "batch_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            batch = Batch.objects.get(id=batch_id)
+        except Batch.DoesNotExist:
+            return Response({"error": "Batch not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        TransformationInput.objects.create(transformation=transfo, batch=batch)
         return Response(TransformationSerializer(transfo).data)
 
     @action(detail=True, methods=['post'], url_path='add-output')
     def add_output(self, request, pk=None):
         transfo = self.get_object()
         batch_id = request.data.get('batch_id')
-        TransformationOutput.objects.create(transformation=transfo, batch_id=batch_id)
+        
+        if not batch_id:
+            return Response({"error": "batch_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            batch = Batch.objects.get(id=batch_id)
+        except Batch.DoesNotExist:
+            return Response({"error": "Batch not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        TransformationOutput.objects.create(transformation=transfo, batch=batch)
         return Response(TransformationSerializer(transfo).data)
 
     @action(detail=True, methods=['post'], url_path='lock')

@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from rest_framework_simplejwt.views import TokenRefreshView
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularRedocView,
@@ -9,12 +9,15 @@ from drf_spectacular.views import (
 
 from .views.auth import (
     RegisterView,
+    LoginView,
     UserProfileView,
     KYCRecordViewSet,
     RequestOTPView,
     VerifyOTPView,
     RequestMagicLinkView,
     VerifyMagicLinkView,
+    RequestPasswordResetView,
+    ConfirmPasswordResetView,
 )
 from .views.production import ParcelViewSet, BatchViewSet, HarvestViewSet
 from .views.stores import StoreViewSet, StoreMemberViewSet, StoreAgentViewSet
@@ -50,7 +53,7 @@ router.register(r"reports", ReportViewSet, basename="report")
 urlpatterns = [
     # Auth
     path("auth/register/", RegisterView.as_view(), name="auth_register"),
-    path("auth/login/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
+    path("auth/login/", LoginView.as_view(), name="auth_login"),
     path("auth/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("auth/profile/", UserProfileView.as_view(), name="user_profile"),
     path("auth/send-otp/", RequestOTPView.as_view(), name="auth_send_otp"),
@@ -65,6 +68,8 @@ urlpatterns = [
         VerifyMagicLinkView.as_view(),
         name="auth_magic_link_verify",
     ),
+    path("auth/request-password-reset/", RequestPasswordResetView.as_view(), name="auth_password_reset_request"),
+    path("auth/confirm-password-reset/", ConfirmPasswordResetView.as_view(), name="auth_password_reset_confirm"),
     # Router based endpoints
     path("", include(router.urls)),
     # Schema & Documentation

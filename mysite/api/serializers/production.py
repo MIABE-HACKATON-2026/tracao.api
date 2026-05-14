@@ -3,6 +3,23 @@ from ..models.parcels import Parcel, ParcelValidation
 from ..models.batches import Batch, BatchValidation, Harvest
 from .auth import UserSerializer
 
+
+def validate_gps_coordinates(value):
+    if not value or not isinstance(value, list):
+        raise serializers.ValidationError("GPS coordinates must be a list of points.")
+    if len(value) < 3:
+        raise serializers.ValidationError("A polygon requires at least 3 points.")
+    for i, point in enumerate(value):
+        if not isinstance(point, (list, tuple)) or len(point) < 2:
+            raise serializers.ValidationError(f"Point {i} must be [longitude, latitude].")
+        lon, lat = point[0], point[1]
+        if not (-180 <= lon <= 180) or not (-90 <= lat <= 90):
+            raise serializers.ValidationError(f"Point {i} has invalid coordinates.")
+    if value[0] != value[-1]:
+        value.append(value[0])
+    return value
+
+
 class ParcelSerializer(serializers.ModelSerializer):
     farmer_id = serializers.PrimaryKeyRelatedField(source='farmer', read_only=True)
     validated_by_id = serializers.PrimaryKeyRelatedField(source='validated_by', read_only=True)
@@ -16,6 +33,9 @@ class ParcelSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at', 'validated_by_id'
         )
         read_only_fields = ('id', 'farmer_id', 'area', 'status', 'created_at', 'updated_at', 'validated_by_id')
+
+    def validate_gps_coordinates(self, value):
+        return validate_gps_coordinates(value)
 
 class ParcelValidationSerializer(serializers.ModelSerializer):
     parcel_id = serializers.PrimaryKeyRelatedField(source='parcel', read_only=True)
@@ -33,6 +53,11 @@ class HarvestSerializer(serializers.ModelSerializer):
         model = Harvest
         fields = ('id', 'batch_id', 'quantity', 'harvest_date', 'created_at')
         read_only_fields = ('id', 'created_at')
+
+    def validate_quantity(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Quantity must be greater than 0.")
+        return value
 
 class BatchSerializer(serializers.ModelSerializer):
     farmer_id = serializers.PrimaryKeyRelatedField(source='farmer', read_only=True)

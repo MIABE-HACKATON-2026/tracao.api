@@ -12,19 +12,28 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        return Transaction.objects.filter(buyer=user) | Transaction.objects.filter(seller=user)
+        return (
+            Transaction.objects
+            .select_related('buyer', 'seller', 'batch', 'batch__farmer', 'batch__parcel')
+            .filter(buyer=user) | Transaction.objects.select_related('buyer', 'seller', 'batch', 'batch__farmer', 'batch__parcel').filter(seller=user)
+        ).order_by('-created_at')
 
     def perform_create(self, serializer):
         batch = serializer.validated_data['batch']
-        # Prevent double sale
-        if Transaction.objects.filter(batch=batch, status='completed').exists():
-            raise serializers.ValidationError("This batch has already been sold.")
         
-        serializer.save(seller=batch.farmer, status='pending')
+        with transaction.atomic():
+            if Transaction.objects.select_for_update().filter(batch=batch, status='completed').exists():
+                raise serializers.ValidationError("This batch has already been sold.")
+            
+            serializer.save(seller=batch.farmer, status='pending')
 
     @action(detail=True, methods=['post'], url_path='complete')
     def complete_transaction(self, request, pk=None):
         tx = self.get_object()
+        
+        if request.user not in [tx.buyer, tx.seller] and request.user.role != 'admin':
+            return Response({"error": "Unauthorized"}, status=status.HTTP_403_FORBIDDEN)
+        
         if tx.status != 'pending':
             return Response({"error": "Transaction is not pending"}, status=status.HTTP_400_BAD_REQUEST)
         
@@ -32,7 +41,6 @@ class TransactionViewSet(viewsets.ModelViewSet):
             tx.status = 'completed'
             tx.save()
             
-            # Close the batch
             batch = tx.batch
             batch.status = 'closed'
             batch.save()

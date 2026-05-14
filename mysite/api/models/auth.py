@@ -26,12 +26,16 @@ class User(AbstractUser):
         ("farmer", "Farmer"),
         ("buyer", "Buyer"),
         ("store", "Store"),
+        ("agent", "Agent"),
+        ("transporter", "Transporter"),
+        ("processor", "Processor"),
         ("admin", "Admin"),
     ]
     SUB_ROLE_CHOICES = [
         ("exportateur", "Exportateur"),
         ("importateur", "Importateur"),
         ("transformateur", "Transformateur"),
+        ("inspector", "Inspecteur"),
     ]
     STATUS_CHOICES = [
         ("active", "Active"),
@@ -90,7 +94,7 @@ class User(AbstractUser):
 class OTPRecord(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email = models.EmailField()
-    code = models.CharField(max_length=6)
+    code = models.CharField(max_length=255)
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
     is_used = models.BooleanField(default=False)
