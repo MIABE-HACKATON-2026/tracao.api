@@ -39,3 +39,25 @@ class GISService:
         except Exception as e:
             logger.error(f"Error checking overlap: {e}")
             return False
+
+    @staticmethod
+    def find_closest_store(lon, lat):
+        from ..models.stores import Store
+        from pyproj import Geod
+        try:
+            geod = Geod(ellps="WGS84")
+            stores = Store.objects.filter(user__latitude__isnull=False, user__longitude__isnull=False)
+            closest_store = None
+            min_dist = float('inf')
+            for store in stores:
+                try:
+                    _, _, dist = geod.inv(lon, lat, store.user.longitude, store.user.latitude)
+                    if dist < min_dist:
+                        min_dist = dist
+                        closest_store = store
+                except Exception:
+                    pass
+            return closest_store
+        except Exception as e:
+            logger.error(f"Error finding closest store: {e}")
+            return None

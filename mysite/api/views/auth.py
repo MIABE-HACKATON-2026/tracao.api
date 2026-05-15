@@ -73,17 +73,36 @@ class VerifyOTPView(APIView):
         responses={200: {"type": "object", "properties": {"message": {"type": "string"}, "access": {"type": "string"}, "refresh": {"type": "string"}, "user": {"type": "object"}}}},
     )
     def post(self, request):
-        email = request.data.get("email", "").strip()
+        identifier = request.data.get("email", "").strip()
         code = request.data.get("code", "").strip()
 
-        if not email or not code:
+        if not identifier or not code:
             return Response(
-                {"error": "Email et code sont requis"},
+                {"error": "Identifiant et code sont requis"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Resolve phone → email if needed
+        email = identifier
+        if '@' not in identifier:
+            try:
+                user_obj = User.objects.get(phone=identifier)
+                email = user_obj.email
+            except User.DoesNotExist:
+                return Response(
+                    {"error": "Utilisateur introuvable"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+        # DEBUG LOGGING
+        with open("otp_debug.log", "a") as f:
+            f.write(f"--- Verify OTP Attempt ---\n")
+            f.write(f"Identifier: {identifier}\n")
+            f.write(f"Email: {email}\n")
+            f.write(f"Code entered: {code}\n")
+
         with transaction.atomic():
-            # Chercher le dernier OTP non utilisé pour cet email
+            # Chercher le dernier OTP (on repasse en sensible à la casse temporairement)
             otp = (
                 OTPRecord.objects.select_for_update()
                 .filter(email=email, is_used=False)
@@ -92,16 +111,22 @@ class VerifyOTPView(APIView):
             )
 
             if not otp:
+                with open("otp_debug.log", "a") as f:
+                    f.write("Error: No unused OTP found for this email.\n")
                 return Response(
                     {"error": "Code invalide ou expiré"}, status=status.HTTP_400_BAD_REQUEST
                 )
 
             if not verify_otp_hash(code, otp.code):
+                with open("otp_debug.log", "a") as f:
+                    f.write(f"Error: Hash mismatch. DB hash: {otp.code}\n")
                 return Response(
                     {"error": "Code invalide"}, status=status.HTTP_400_BAD_REQUEST
                 )
 
             if not otp.is_valid():
+                with open("otp_debug.log", "a") as f:
+                    f.write(f"Error: OTP expired. Expires at: {otp.expires_at}\n")
                 return Response(
                     {"error": "Code expiré"}, status=status.HTTP_400_BAD_REQUEST
                 )
@@ -128,15 +153,47 @@ class VerifyOTPView(APIView):
             )
 
 
+class CheckRoleView(APIView):
+    permission_classes = (permissions.AllowAny,)
+
+    def post(self, request):
+        identifier = request.data.get("email", "").strip()
+        if not identifier:
+            return Response({"role": None})
+
+        from django.db.models import Q
+        user_obj = User.objects.filter(Q(email__iexact=identifier) | Q(phone__iexact=identifier)).first()
+        
+        return Response({
+            "role": user_obj.role if user_obj else None,
+            "sub_role": user_obj.sub_role if user_obj else None
+        })
+
+
 class RequestOTPView(APIView):
     permission_classes = (permissions.AllowAny,)
 
     def post(self, request):
-        email = request.data.get("email", "").strip()
-        if not email:
+        identifier = request.data.get("email", "").strip()
+        if not identifier:
             return Response(
-                {"error": "Email est requis"}, status=status.HTTP_400_BAD_REQUEST
+                {"error": "Email ou téléphone est requis"}, status=status.HTTP_400_BAD_REQUEST
             )
+
+        # Resolve phone → email if needed
+        email = identifier
+        user_obj = None
+        if '@' not in identifier:
+            try:
+                user_obj = User.objects.get(phone=identifier)
+                email = user_obj.email
+            except User.DoesNotExist:
+                pass
+        else:
+            try:
+                user_obj = User.objects.get(email__iexact=identifier)
+            except User.DoesNotExist:
+                pass
 
         otp_code = str(random.randint(100000, 999999))
         expires_at = timezone.now() + timedelta(minutes=10)
@@ -145,16 +202,20 @@ class RequestOTPView(APIView):
         OTPRecord.objects.create(email=email, code=hashed_code, expires_at=expires_at)
 
         EmailService.send_html_email(
-            subject="Votre code de vérification",
+            subject="Votre code de vérification - Tracao",
             template_name="emails/notification_email.html",
             context={
-                "name": "Cher utilisateur",
+                "name": user_obj.first_name if user_obj else "Cher utilisateur",
                 "otp_code": otp_code,
                 "message": f"Votre code de vérification est : {otp_code}. Ce code expirera dans 10 minutes.",
             },
             recipient_list=[email],
         )
-        return Response({"message": "OTP envoyé avec succès"})
+        return Response({
+            "message": "OTP envoyé avec succès",
+            "role": user_obj.role if user_obj else None,
+            "sub_role": user_obj.sub_role if user_obj else None
+        })
 
 
 class ResendOTPView(RequestOTPView):
@@ -298,9 +359,99 @@ class RequestPasswordResetView(APIView):
             return Response({"error": "Utilisateur introuvable"}, status=404)
 
 
-class ConfirmPasswordResetView(APIView):
+class InviteOperatorView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def post(self, request):
+        email = request.data.get("email")
+        role = request.data.get("role") # 'transporter' or 'processor'
+        sub_role = request.data.get("sub_role") # 'exportateur', etc.
+
+        if not email or not role:
+            return Response({"error": "Email and role are required"}, status=400)
+
+        with transaction.atomic():
+            # Check if user already exists
+            user, created = User.objects.get_or_create(
+                email=email,
+                defaults={
+                    "username": email,
+                    "role": role,
+                    "sub_role": sub_role,
+                    "status": "pending",
+                    "password": make_password(str(uuid.uuid4())) # Temp random password
+                }
+            )
+
+            if not created:
+                # If user exists but is pending, we can re-send invitation
+                if user.status != 'pending':
+                    return Response({"error": "L'utilisateur existe déjà avec un compte actif"}, status=400)
+
+            # Create transporter registry if role is transporter
+            from ..models.supply_chain import TransporterRegistry
+            if role == 'transporter':
+                TransporterRegistry.objects.get_or_create(
+                    phone=request.data.get("phone", f"tmp-{uuid.uuid4().hex[:10]}"),
+                    defaults={
+                        "user": user,
+                        "created_by": request.user,
+                        "status": "invited"
+                    }
+                )
+
+            signer = TimestampSigner()
+            token = signer.sign(str(user.id))
+
+            frontend_base_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000").rstrip("/")
+            # The user requested a specific redirection for password setup
+            setup_url = f"{frontend_base_url}/setup-password?token={token}"
+
+            EmailService.send_html_email(
+                subject="Invitation Tracao - Configuration de votre compte",
+                template_name="emails/notification_email.html",
+                context={
+                    "name": "Nouvel Opérateur",
+                    "message": f"Vous avez été invité à rejoindre Tracao en tant que {role}. Cliquez sur le bouton ci-dessous pour définir votre mot de passe et accéder à votre espace.",
+                    "action_url": setup_url,
+                    "action_text": "Configurer mon compte",
+                },
+                recipient_list=[email],
+            )
+
+            return Response({"message": "Invitation envoyée avec succès", "token": token if settings.DEBUG else None})
+
+
+class SetPasswordView(APIView):
     permission_classes = (permissions.AllowAny,)
 
     def post(self, request):
-        # Logique de confirmation ici
-        return Response({"message": "Mot de passe réinitialisé"})
+        token = request.data.get("token")
+        password = request.data.get("password")
+
+        if not token or not password:
+            return Response({"error": "Token et mot de passe requis"}, status=400)
+
+        signer = TimestampSigner()
+        try:
+            user_id = signer.unsign(token, max_age=86400) # 24 hours for invitation
+            user = User.objects.get(id=user_id)
+        except (SignatureExpired, BadSignature, User.DoesNotExist):
+            return Response({"error": "Lien invalide ou expiré"}, status=400)
+
+        user.set_password(password)
+        user.status = "active"
+        user.save()
+
+        # Update TransporterRegistry if exists
+        from ..models.supply_chain import TransporterRegistry
+        TransporterRegistry.objects.filter(user=user).update(status='active')
+
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            "message": "Mot de passe défini avec succès",
+            "refresh": str(refresh),
+            "access": str(refresh.access_token),
+            "user": UserSerializer(user, context={"request": request}).data,
+        })
+

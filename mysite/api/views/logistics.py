@@ -3,16 +3,30 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db import transaction
 
-from ..models.supply_chain import Transport, Transformation, TransformationInput, TransformationOutput
+from ..models.supply_chain import Transport, Transformation, TransformationInput, TransformationOutput, TransporterRegistry
 from ..models.batches import Batch
-from ..serializers.logistics import TransportSerializer, TransformationSerializer
+from ..serializers.logistics import TransportSerializer, TransformationSerializer, TransporterRegistrySerializer
+
+class TransporterRegistryViewSet(viewsets.ModelViewSet):
+    serializer_class = TransporterRegistrySerializer
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get_queryset(self):
+        return TransporterRegistry.objects.select_related('user', 'created_by').all().order_by('-created_at')
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
 
 class TransportViewSet(viewsets.ModelViewSet):
     serializer_class = TransportSerializer
     permission_classes = (permissions.IsAuthenticated,)
 
     def get_queryset(self):
-        return Transport.objects.select_related('batch', 'transporter_registry', 'assigned_by').order_by('-created_at')
+        user = self.request.user
+        queryset = Transport.objects.select_related('batch', 'transporter_registry', 'assigned_by').order_by('-created_at')
+        if user.role == 'store':
+            return queryset.filter(batch__store__user=user)
+        return queryset
 
     def perform_create(self, serializer):
         serializer.save(assigned_by=self.request.user)
@@ -40,12 +54,16 @@ class TransformationViewSet(viewsets.ModelViewSet):
     permission_classes = (permissions.IsAuthenticated,)
 
     def get_queryset(self):
-        return (
+        user = self.request.user
+        queryset = (
             Transformation.objects
             .select_related('created_by', 'transformer')
             .prefetch_related('inputs__batch', 'outputs__batch')
             .order_by('-created_at')
         )
+        if user.role == 'store':
+            return queryset.filter(inputs__batch__store__user=user).distinct()
+        return queryset
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)

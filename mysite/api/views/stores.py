@@ -1,4 +1,4 @@
-from rest_framework import viewsets, status, permissions
+from rest_framework import viewsets, status, permissions, parsers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db import transaction
@@ -11,9 +11,14 @@ from ..serializers.stores import (
 class StoreViewSet(viewsets.ModelViewSet):
     serializer_class = StoreSerializer
     permission_classes = (permissions.IsAuthenticated,)
+    parser_classes = (parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser)
 
     def get_queryset(self):
-        return Store.objects.filter(user=self.request.user).select_related('user', 'validated_by').order_by('-created_at')
+        from django.db.models import Q
+        user = self.request.user
+        return Store.objects.filter(
+            Q(user=user) | Q(members__user=user)
+        ).distinct().select_related('user', 'validated_by').order_by('-created_at')
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)

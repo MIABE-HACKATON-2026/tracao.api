@@ -19,6 +19,7 @@ class Parcel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     validated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='validated_parcels')
+    store = models.ForeignKey('Store', on_delete=models.SET_NULL, null=True, blank=True, related_name='parcels')
 
     class Meta:
         indexes = [

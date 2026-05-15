@@ -36,6 +36,10 @@ class User(AbstractUser):
         ("importateur", "Importateur"),
         ("transformateur", "Transformateur"),
         ("inspector", "Inspecteur"),
+        # Admin sub-roles
+        ("super_admin", "Super Admin"),
+        ("gouvernement", "Gouvernement"),
+        ("certificateur", "Certificateur"),
     ]
     STATUS_CHOICES = [
         ("active", "Active"),

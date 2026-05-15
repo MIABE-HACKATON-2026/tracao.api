@@ -4,11 +4,12 @@ from .auth import UserSerializer
 
 class StoreSerializer(serializers.ModelSerializer):
     user_id = serializers.PrimaryKeyRelatedField(source='user', read_only=True)
+    user_details = UserSerializer(source='user', read_only=True)
     validated_by_id = serializers.PrimaryKeyRelatedField(source='validated_by', read_only=True)
 
     class Meta:
         model = Store
-        fields = ('id', 'user_id', 'name', 'legal_document', 'status', 'validated_by_id', 'created_at')
+        fields = ('id', 'user_id', 'user_details', 'name', 'legal_document', 'status', 'validated_by_id', 'created_at')
         read_only_fields = ('id', 'user_id', 'status', 'validated_by_id', 'created_at')
 
 class StoreMemberSerializer(serializers.ModelSerializer):

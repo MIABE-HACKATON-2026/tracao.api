@@ -29,6 +29,7 @@ class UserSerializer(serializers.ModelSerializer):
             "longitude",
             "status",
             "kyc_status",
+            "is_active",
             "created_at",
             "latest_kyc",
         )

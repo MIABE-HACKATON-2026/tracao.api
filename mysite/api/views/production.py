@@ -20,19 +20,63 @@ class ParcelViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        queryset = Parcel.objects.select_related('farmer', 'validated_by')
+        queryset = Parcel.objects.select_related('farmer', 'validated_by', 'store').order_by('-created_at')
         if user.role == 'farmer':
             return queryset.filter(farmer=user)
         elif user.role == 'store':
-            return queryset.filter(farmer__store_memberships__user=user)
-        return queryset.order_by('-created_at')
+            # Filter by the store the user belongs to
+            return queryset.filter(store__members__user=user)
+        return queryset
 
     def perform_create(self, serializer):
         if self.request.user.role != 'farmer':
             raise permissions.ValidationError("Only farmers can create parcels")
-        gps_coords = self.request.data.get('gps_coordinates')
-        area = GISService.calculate_area(gps_coords)
-        serializer.save(farmer=self.request.user, area=area, status='pending')
+        gps_coords = self.request.data.get('gps_coordinates', [])
+        area = 0.0
+        if gps_coords and len(gps_coords) > 0:
+            area = GISService.calculate_area(gps_coords)
+            
+        farmer = self.request.user
+        
+        from ..models.stores import Store, StoreMember
+        from ..models.system import Notification
+
+        closest_store = None
+        # Try to find store by existing membership
+        membership = StoreMember.objects.filter(user=farmer).first()
+        if membership:
+            closest_store = membership.store
+        else:
+            # If no membership, find closest store and create membership
+            lon, lat = None, None
+            if gps_coords and len(gps_coords) > 0:
+                lon, lat = gps_coords[0][0], gps_coords[0][1]
+            elif farmer.longitude and farmer.latitude:
+                lon, lat = farmer.longitude, farmer.latitude
+                
+            if lon is not None and lat is not None:
+                closest_store = GISService.find_closest_store(lon, lat)
+                
+            if not closest_store:
+                closest_store = Store.objects.first()
+                
+            if closest_store:
+                StoreMember.objects.create(
+                    store=closest_store,
+                    user=farmer,
+                    role='farmer',
+                    status='active'
+                )
+        
+        parcel = serializer.save(farmer=farmer, area=area, status='pending', store=closest_store)
+        
+        # Notify store manager
+        if closest_store and closest_store.user:
+            Notification.objects.create(
+                user=closest_store.user,
+                type='validation',
+                message=f"Nouvelle parcelle « {parcel.name} » soumise par {farmer.get_full_name() or farmer.phone} pour validation."
+            )
 
     def get_permissions(self):
         if self.action in ['validate_parcel', 'check_overlap']:
@@ -75,6 +119,14 @@ class ParcelViewSet(viewsets.ModelViewSet):
                 comment=comment
             )
             
+            # Notify farmer
+            status_text = "validée" if v_status == 'approved' else "rejetée"
+            Notification.objects.create(
+                user=parcel.farmer,
+                type='validation' if v_status == 'approved' else 'rejection',
+                message=f"Votre parcelle « {parcel.name} » a été {status_text}."
+            )
+            
         return Response(ParcelSerializer(parcel).data)
 
 class BatchViewSet(viewsets.ModelViewSet):
@@ -83,20 +135,53 @@ class BatchViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        queryset = Batch.objects.select_related('farmer', 'parcel', 'validated_by').prefetch_related('harvests')
+        queryset = Batch.objects.select_related('farmer', 'parcel', 'validated_by', 'store').prefetch_related('harvests').order_by('-created_at')
         if user.role == 'farmer':
             return queryset.filter(farmer=user)
-        return queryset.order_by('-created_at')
+        elif user.role == 'store':
+            return queryset.filter(store__members__user=user)
+        return queryset
 
     def perform_create(self, serializer):
         if self.request.user.role != 'farmer':
             raise permissions.ValidationError("Only farmers can create batches")
+            
+        farmer = self.request.user
+        
+        from ..models.stores import Store, StoreMember
+        from ..models.system import Notification
+
+        closest_store = None
+        membership = StoreMember.objects.filter(user=farmer).first()
+        if membership:
+            closest_store = membership.store
+        else:
+            if farmer.longitude and farmer.latitude:
+                closest_store = GISService.find_closest_store(farmer.longitude, farmer.latitude)
+            if not closest_store:
+                closest_store = Store.objects.first()
+            if closest_store:
+                StoreMember.objects.create(
+                    store=closest_store,
+                    user=farmer,
+                    role='farmer',
+                    status='active'
+                )
+                
         with transaction.atomic():
             year = timezone.now().year
             last_batch = Batch.objects.select_for_update().filter(created_at__year=year).order_by('-created_at').first()
             count = (int(last_batch.unique_code.split('-')[-1]) if last_batch else 0) + 1
             unique_code = f"TRC-{year}-{count:04d}"
-            serializer.save(farmer=self.request.user, unique_code=unique_code)
+            batch = serializer.save(farmer=farmer, unique_code=unique_code, status='pending', store=closest_store)
+
+            # Notify store manager
+            if closest_store and closest_store.user:
+                Notification.objects.create(
+                    user=closest_store.user,
+                    type='validation',
+                    message=f"Nouveau lot « {batch.unique_code} » soumis par {farmer.get_full_name() or farmer.phone}."
+                )
 
     @action(detail=True, methods=['post'], url_path='lock')
     def lock_batch(self, request, pk=None):
@@ -108,6 +193,41 @@ class BatchViewSet(viewsets.ModelViewSet):
         
         batch.status = 'locked'
         batch.save()
+        return Response(BatchSerializer(batch).data)
+
+    @action(detail=True, methods=['post'], url_path='validate')
+    def validate_batch(self, request, pk=None):
+        batch = self.get_object()
+
+        if request.user.role not in ['agent', 'store', 'admin']:
+            return Response({"error": "Unauthorized to validate batches"}, status=status.HTTP_403_FORBIDDEN)
+
+        v_status = request.data.get('status')
+        comment = request.data.get('comment', '')
+
+        if v_status not in ['approved', 'rejected']:
+            return Response({"error": "Invalid status"}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            batch.status = v_status
+            batch.validated_by = request.user
+            batch.save()
+
+            BatchValidation.objects.create(
+                batch=batch,
+                inspector=request.user,
+                status=v_status,
+                comment=comment
+            )
+
+            # Notify farmer
+            status_text = "validé" if v_status == 'approved' else "rejeté"
+            Notification.objects.create(
+                user=batch.farmer,
+                type='validation' if v_status == 'approved' else 'rejection',
+                message=f"Votre lot « {batch.unique_code} » a été {status_text}."
+            )
+
         return Response(BatchSerializer(batch).data)
 
 class HarvestViewSet(viewsets.ModelViewSet):

@@ -1,6 +1,8 @@
 from rest_framework import permissions
 
 
+# ─── Base roles ──────────────────────────────────────────────────────────────
+
 class IsFarmer(permissions.BasePermission):
     def has_permission(self, request, view):
         return request.user.is_authenticated and request.user.role == "farmer"
@@ -16,9 +18,76 @@ class IsStore(permissions.BasePermission):
         return request.user.is_authenticated and request.user.role == "store"
 
 
-class IsAdmin(permissions.BasePermission):
+# ─── Admin sub-role permissions ───────────────────────────────────────────────
+
+class IsAnyAdmin(permissions.BasePermission):
+    """Tout utilisateur avec role='admin', quelle que soit la sous-role."""
     def has_permission(self, request, view):
         return request.user.is_authenticated and request.user.role == "admin"
+
+
+class IsSuperAdmin(permissions.BasePermission):
+    """Accès contrôle total de la plateforme."""
+    def has_permission(self, request, view):
+        return (
+            request.user.is_authenticated
+            and request.user.role == "admin"
+            and request.user.sub_role == "super_admin"
+        )
+
+
+class IsGouvernement(permissions.BasePermission):
+    """Accès analytique et réglementaire — lecture + exports."""
+    def has_permission(self, request, view):
+        return (
+            request.user.is_authenticated
+            and request.user.role == "admin"
+            and request.user.sub_role == "gouvernement"
+        )
+
+
+class IsCertificateur(permissions.BasePermission):
+    """Accès spécialisé métier — certification de lots assignés."""
+    def has_permission(self, request, view):
+        return (
+            request.user.is_authenticated
+            and request.user.role == "admin"
+            and request.user.sub_role == "certificateur"
+        )
+
+
+class IsSuperAdminOrGouvernement(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user.is_authenticated
+            and request.user.role == "admin"
+            and request.user.sub_role in ["super_admin", "gouvernement"]
+        )
+
+
+class IsAdminReadOnly(permissions.BasePermission):
+    """
+    Super Admin : accès en lecture + écriture.
+    Gouvernement / Certificateur : lecture seule.
+    """
+    def has_permission(self, request, view):
+        if not request.user.is_authenticated or request.user.role != "admin":
+            return False
+        if request.user.sub_role == "super_admin":
+            return True
+        return request.method in permissions.SAFE_METHODS
+
+
+# ─── Cross-role combinations ──────────────────────────────────────────────────
+
+class IsAdmin(permissions.BasePermission):
+    """Rétro-compatibilité — alias de IsSuperAdmin."""
+    def has_permission(self, request, view):
+        return (
+            request.user.is_authenticated
+            and request.user.role == "admin"
+            and request.user.sub_role in ["super_admin", None]
+        )
 
 
 class IsFarmerOrAdmin(permissions.BasePermission):
